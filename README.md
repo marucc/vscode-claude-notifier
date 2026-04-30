@@ -28,3 +28,25 @@ npm run package   # VSIX 生成
 
 - macOS
 - VS Code でターミナルを開いて Claude Code を使用していること
+
+## フックが使える環境では不要
+
+Claude Code の `Notification` フックが使える環境では、この拡張機能は不要。
+`~/.claude/settings.json` に以下を追加すれば同等の通知が実現できる。
+
+```json
+"hooks": {
+  "Notification": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "INPUT=$(cat); PROJ=$(echo \"$INPUT\" | jq -r '.cwd' | xargs basename); osascript -e \"display notification \\\"$PROJ\\\" with title \\\"Claude Code 入力待ち\\\"\""
+        }
+      ]
+    }
+  ]
+}
+```
+
+エンタープライズ環境など `allowManagedHooksOnly: true` が設定されていてユーザー定義フックが使えない場合に、この拡張機能で代替する。
