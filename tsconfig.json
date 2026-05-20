@@ -6,7 +6,8 @@
     "rootDir": "./src",
     "strict": true,
     "esModuleInterop": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "types": ["node", "vscode"]
   },
   "exclude": ["node_modules", ".vscode-test"]
 }
