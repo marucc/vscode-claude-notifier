@@ -9,7 +9,18 @@
   "categories": ["Other"],
   "activationEvents": ["onStartupFinished"],
   "main": "./out/extension.js",
-  "contributes": {},
+  "contributes": {
+    "configuration": {
+      "title": "Claude Code Notifier",
+      "properties": {
+        "claudeCodeNotifier.debug": {
+          "type": "boolean",
+          "default": false,
+          "description": "Output Channel にデバッグログを出力する"
+        }
+      }
+    }
+  },
   "scripts": {
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",

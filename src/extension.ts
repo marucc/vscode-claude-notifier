@@ -6,12 +6,35 @@ import { exec } from 'child_process';
 const WAITING_MARKER = '✳';
 const CLAUDE_MARKER_RE = /^[⠀-⣿✳] /;
 
+let output: vscode.OutputChannel;
+let debugEnabled = false;
+
+const log = (msg: string) => {
+  if (debugEnabled) output?.appendLine(`[${new Date().toISOString()}] ${msg}`);
+};
+
 export function activate(context: vscode.ExtensionContext) {
-  const prevStates = new WeakMap<vscode.Terminal, boolean>();
-  const activeIds = new Set<string>();
+  output = vscode.window.createOutputChannel('Claude Code Notifier');
+  context.subscriptions.push(output);
+
+  const readDebug = () => {
+    debugEnabled = vscode.workspace.getConfiguration('claudeCodeNotifier').get<boolean>('debug', false);
+  };
+  readDebug();
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration(e => {
+      if (e.affectsConfiguration('claudeCodeNotifier.debug')) readDebug();
+    })
+  );
 
   const project = () =>
     vscode.workspace.name ?? vscode.workspace.workspaceFolders?.[0]?.name ?? 'Unknown';
+
+  log(`activated project=${project()}`);
+
+  const prevStates = new WeakMap<vscode.Terminal, boolean>();
+  const activeIds = new Set<string>();
+  const prevNames = new WeakMap<vscode.Terminal, string>();
 
   // 先頭マーカーを除いた残りで安定したIDを作る
   const idFor = (terminal: vscode.Terminal) =>
@@ -21,15 +44,23 @@ export function activate(context: vscode.ExtensionContext) {
     for (const terminal of vscode.window.terminals) {
       if (!CLAUDE_MARKER_RE.test(terminal.name)) continue;
 
-      const isWaiting = terminal.name.includes(WAITING_MARKER);
+      const name = terminal.name;
+      const isWaiting = name.includes(WAITING_MARKER);
       const prev = prevStates.get(terminal);
       const id = idFor(terminal);
 
+      if (debugEnabled && prevNames.get(terminal) !== name) {
+        log(`name="${name}" isWaiting=${isWaiting} prev=${prev}`);
+        prevNames.set(terminal, name);
+      }
+
       if (prev === false && isWaiting) {
+        log(`-> notify id=${id}`);
         notify(id, project());
         activeIds.add(id);
       }
       if (prev === true && !isWaiting) {
+        log(`-> dismiss id=${id}`);
         dismiss(id);
         activeIds.delete(id);
       }
