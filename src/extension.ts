@@ -1,35 +1,34 @@
 import * as vscode from 'vscode';
 import { exec } from 'child_process';
 
-// ✳ = 入力待ち、⠐/⠂ = 稼働中（スピナー）
+// Claude Code のターミナルタイトルは「<マーカー> <セッション名>」形式
+// マーカー: Brailleスピナー (U+2800-U+28FF) = 稼働中、✳ = 入力待ち
 const WAITING_MARKER = '✳';
-const CLAUDE_TERMINAL_NAME = 'Claude Code';
+const CLAUDE_MARKER_RE = /^[⠀-⣿✳] /;
 
 export function activate(context: vscode.ExtensionContext) {
-  // terminal -> 前回の入力待ち状態（undefined = 初回未記録）
   const prevStates = new WeakMap<vscode.Terminal, boolean>();
-  // 表示中の通知ID（フォーカス時にまとめて消すため）
   const activeIds = new Set<string>();
 
   const project = () =>
     vscode.workspace.name ?? vscode.workspace.workspaceFolders?.[0]?.name ?? 'Unknown';
 
-  const idFor = (terminal: vscode.Terminal) => `${project()}::${terminal.name.replace(/[⠐⠂✳ ]/g, '')}`;
+  // 先頭マーカーを除いた残りで安定したIDを作る
+  const idFor = (terminal: vscode.Terminal) =>
+    `${project()}::${terminal.name.replace(/^[⠀-⣿✳] /, '')}`;
 
   const poll = () => {
     for (const terminal of vscode.window.terminals) {
-      if (!terminal.name.includes(CLAUDE_TERMINAL_NAME)) continue;
+      if (!CLAUDE_MARKER_RE.test(terminal.name)) continue;
 
       const isWaiting = terminal.name.includes(WAITING_MARKER);
       const prev = prevStates.get(terminal);
       const id = idFor(terminal);
 
-      // 稼働中 → 入力待ち: 通知発火
       if (prev === false && isWaiting) {
         notify(id, project());
         activeIds.add(id);
       }
-      // 入力待ち → 稼働中: 通知消去
       if (prev === true && !isWaiting) {
         dismiss(id);
         activeIds.delete(id);
@@ -39,23 +38,20 @@ export function activate(context: vscode.ExtensionContext) {
     }
   };
 
-  // 起動時に現在の状態を記録（通知しない）
   for (const terminal of vscode.window.terminals) {
-    if (terminal.name.includes(CLAUDE_TERMINAL_NAME)) {
+    if (CLAUDE_MARKER_RE.test(terminal.name)) {
       prevStates.set(terminal, terminal.name.includes(WAITING_MARKER));
     }
   }
 
-  // 新しく開いたターミナルも監視対象に追加
   context.subscriptions.push(
     vscode.window.onDidOpenTerminal(terminal => {
-      if (terminal.name.includes(CLAUDE_TERMINAL_NAME)) {
+      if (CLAUDE_MARKER_RE.test(terminal.name)) {
         prevStates.set(terminal, terminal.name.includes(WAITING_MARKER));
       }
     })
   );
 
-  // ウィンドウがフォーカスされたら表示中の通知を全て消す
   context.subscriptions.push(
     vscode.window.onDidChangeWindowState(state => {
       if (state.focused) {
