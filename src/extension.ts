@@ -2,9 +2,9 @@ import * as vscode from 'vscode';
 import { exec } from 'child_process';
 
 // Claude Code のターミナルタイトルは「<マーカー> <セッション名>」形式
-// マーカー: Brailleスピナー (U+2800-U+28FF) = 稼働中、✳ = 入力待ち
+// マーカー: ◐/◑ (U+25D0-U+25D1) = 稼働中、✳ = 入力待ち
 const WAITING_MARKER = '✳';
-const CLAUDE_MARKER_RE = /^[⠀-⣿✳] /;
+const CLAUDE_MARKER_RE = /^[◐◑✳] /;
 
 let output: vscode.OutputChannel;
 let debugEnabled = false;
@@ -38,10 +38,16 @@ export function activate(context: vscode.ExtensionContext) {
 
   // 先頭マーカーを除いた残りで安定したIDを作る
   const idFor = (terminal: vscode.Terminal) =>
-    `${project()}::${terminal.name.replace(/^[⠀-⣿✳] /, '')}`;
+    `${project()}::${terminal.name.replace(CLAUDE_MARKER_RE, '')}`;
 
   const poll = () => {
     for (const terminal of vscode.window.terminals) {
+      // デバッグ時は全ターミナルのタイトル変化を記録
+      if (debugEnabled && prevNames.get(terminal) !== terminal.name) {
+        log(`[all] name="${terminal.name}"`);
+        prevNames.set(terminal, terminal.name);
+      }
+
       if (!CLAUDE_MARKER_RE.test(terminal.name)) continue;
 
       const name = terminal.name;
@@ -50,7 +56,7 @@ export function activate(context: vscode.ExtensionContext) {
       const id = idFor(terminal);
 
       if (debugEnabled && prevNames.get(terminal) !== name) {
-        log(`name="${name}" isWaiting=${isWaiting} prev=${prev}`);
+        log(`[matched] name="${name}" isWaiting=${isWaiting} prev=${prev}`);
         prevNames.set(terminal, name);
       }
 
