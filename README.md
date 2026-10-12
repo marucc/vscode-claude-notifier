@@ -1,41 +1,46 @@
 # vscode-claude-notifier
 
-Claude Code が入力待ちになったら macOS 通知を送る VS Code 拡張機能。
+English | [日本語](README_ja.md)
 
-複数プロジェクトを macOS ネイティブタブで開いている場合に、別ウィンドウで Claude Code が応答完了したことを通知で気づけるようにする。
+A VS Code extension that sends a macOS notification when Claude Code is waiting for input.
 
-## 動作
+When several projects are open as macOS native tabs, it lets you notice that Claude Code has finished responding in another window.
 
-- ターミナルタイトルを 500ms ごとに監視し、稼働中（`⠐`/`⠂`）から入力待ち（`✳`）に変化したときにプロジェクト名付きで通知を発火する
-- ウィンドウがフォーカスされた / Claude Code が稼働中に戻ったら通知を消す
-- 通知をクリックすると、該当プロジェクトの VS Code ウィンドウ（macOS ネイティブタブ）がアクティブになる
+## Behavior
 
-通知は Hammerspoon の `hs.notify` 経由で送る。`open -g "hammerspoon://claude-notify?..."` で URL Handler を叩いて、永続表示・プログラム制御による消去・タップ時のウィンドウフォーカスを実現している。
+- Watches terminal titles every 500ms. A terminal that has shown a title starting with one of Claude Code's own markers (busy `◐`/`◑`, waiting `✳`) is treated as a Claude terminal
+- Sends a notification with the project name when the title changes from busy (`◐`/`◑`) to anything else. Even if another app (a PTY wrapper etc.) rewrites the waiting marker, it notifies as soon as Claude is no longer busy
+- Does not notify while the window is focused
+- Removes the notification when the window gets focus or Claude Code becomes busy again
+- Clicking the notification activates the VS Code window (macOS native tab) of that project
+- The notification text follows VS Code's display language (English by default, Japanese included)
 
-## 依存
+Notifications are sent through Hammerspoon's `hs.notify`. The extension calls the URL handler with `open -g "hammerspoon://claude-notify?..."` to get persistent notifications, programmatic removal, and focusing the window on click.
 
-この拡張機能は単独では動作しない。以下のセットアップが必要：
+## Dependencies
 
-### 1. Hammerspoon 本体
+This extension does not work on its own. The following setup is required:
+
+### 1. Hammerspoon
 
 ```bash
 brew install --cask hammerspoon
 ```
 
-システム設定 → 通知 → Hammerspoon を「通知を許可」にする。
+In System Settings → Notifications → Hammerspoon, allow notifications.
 
-### 2. claude_notify モジュール（Hammerspoon 側）
+### 2. claude_notify module (Hammerspoon side)
 
-[marucc/hammerspoon_tools](https://github.com/marucc/hammerspoon_tools) の `modules/claude_notify.lua` が必要。`init.lua` で以下のように読み込んで `init()` を呼ぶ：
+`modules/claude_notify.lua` from [marucc/hammerspoon_tools](https://github.com/marucc/hammerspoon_tools) is required. Load it in `init.lua` and call `init()`:
 
 ```lua
 local claudeNotify = require("modules.claude_notify")
 claudeNotify.init()
 ```
 
-このモジュールが `hammerspoon://claude-notify` の URL Handler を登録する。
+This module registers the `hammerspoon://claude-notify` URL handler.
 
-## インストール
+## Installation
 
 ```bash
 npm install
@@ -43,24 +48,35 @@ npm run package
 code --install-extension vscode-claude-notifier-0.1.0.vsix
 ```
 
-## 開発
+## Development
 
 ```bash
-npm run compile   # ビルド
-npm run watch     # ウォッチモード
-npm run package   # VSIX 生成
+npm run compile   # build
+npm run watch     # watch mode
+npm test          # build + tests (title detection, l10n bundles; node:test)
+npm run package   # create the VSIX
 ```
 
-## 動作条件
+## Adding a language
+
+Add `l10n/bundle.l10n.<language>.json` that maps the English text to the translation. `npm test` checks that every bundle has the same keys.
+
+```json
+{
+  "Claude Code is waiting for input": "Claude Code 入力待ち"
+}
+```
+
+## Requirements
 
 - macOS
-- Hammerspoon（claude_notify モジュール込み）
-- VS Code でターミナルを開いて Claude Code を使用していること
+- Hammerspoon (with the claude_notify module)
+- Claude Code used in a VS Code terminal
 
-## フックが使える環境では不要
+## Not needed where hooks are available
 
-Claude Code の `Notification` フックが使える環境では、この拡張機能は不要。
-`~/.claude/settings.json` に以下を追加すれば同等の通知が実現できる。
+If Claude Code's `Notification` hook is available, this extension is not needed.
+Adding the following to `~/.claude/settings.json` gives an equivalent notification.
 
 ```json
 "hooks": {
@@ -69,7 +85,7 @@ Claude Code の `Notification` フックが使える環境では、この拡張�
       "hooks": [
         {
           "type": "command",
-          "command": "INPUT=$(cat); PROJ=$(echo \"$INPUT\" | jq -r '.cwd' | xargs basename); osascript -e \"display notification \\\"$PROJ\\\" with title \\\"Claude Code 入力待ち\\\"\""
+          "command": "INPUT=$(cat); PROJ=$(echo \"$INPUT\" | jq -r '.cwd' | xargs basename); osascript -e \"display notification \\\"$PROJ\\\" with title \\\"Claude Code is waiting\\\"\""
         }
       ]
     }
@@ -77,4 +93,8 @@ Claude Code の `Notification` フックが使える環境では、この拡張�
 }
 ```
 
-エンタープライズ環境など `allowManagedHooksOnly: true` が設定されていてユーザー定義フックが使えない場合に、この拡張機能で代替する。
+This extension is the substitute when user-defined hooks cannot be used, e.g. in enterprise environments where `allowManagedHooksOnly: true` is set.
+
+## License
+
+MIT

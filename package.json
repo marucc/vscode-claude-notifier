@@ -4,12 +4,18 @@
   "description": "Claude Code が入力待ちになったら macOS 通知を送る",
   "version": "0.1.0",
   "publisher": "marucc",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/marucc/vscode-claude-notifier.git"
+  },
   "engines": {
     "vscode": "^1.87.0"
   },
   "categories": ["Other"],
   "activationEvents": ["onStartupFinished"],
   "main": "./out/extension.js",
+  "l10n": "./l10n",
   "contributes": {
     "configuration": {
       "title": "Claude Code Notifier",
@@ -25,7 +31,8 @@
   "scripts": {
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "package": "npx @vscode/vsce package --no-dependencies"
+    "package": "npx @vscode/vsce package --no-dependencies",
+    "test": "tsc -p ./ && node --test out/*.test.js"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

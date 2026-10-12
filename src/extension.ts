@@ -1,10 +1,7 @@
 import * as vscode from 'vscode';
 import { exec } from 'child_process';
-
-// Claude Code のターミナルタイトルは「<マーカー> <セッション名>」形式
-// マーカー: ◐/◑ (U+25D0-U+25D1) = 稼働中、✳ = 入力待ち
-const WAITING_MARKER = '✳';
-const CLAUDE_MARKER_RE = /^[◐◑✳] /;
+import { isClaudeTitle, isBusyTitle, sessionName, transition } from './title';
+import { MESSAGES } from './messages';
 
 let output: vscode.OutputChannel;
 let debugEnabled = false;
@@ -32,62 +29,67 @@ export function activate(context: vscode.ExtensionContext) {
 
   log(`activated project=${project()}`);
 
-  const prevStates = new WeakMap<vscode.Terminal, boolean>();
+  // Claude Code 本体のタイトルを一度でも出したターミナルの、前回の稼働中状態
+  const prevBusy = new WeakMap<vscode.Terminal, boolean>();
+  // 表示中の通知 ID（タイトル変更で ID がずれないよう、通知した時点の ID をターミナルごとに保持）
+  const notifiedIds = new WeakMap<vscode.Terminal, string>();
   const activeIds = new Set<string>();
   const prevNames = new WeakMap<vscode.Terminal, string>();
 
-  // 先頭マーカーを除いた残りで安定したIDを作る
-  const idFor = (terminal: vscode.Terminal) =>
-    `${project()}::${terminal.name.replace(CLAUDE_MARKER_RE, '')}`;
+  const idFor = (terminal: vscode.Terminal) => `${project()}::${sessionName(terminal.name)}`;
+
+  // Claude のターミナルとして記録する（記録済みなら何もしない）
+  const track = (terminal: vscode.Terminal): boolean => {
+    if (prevBusy.has(terminal)) return true;
+    if (!isClaudeTitle(terminal.name)) return false;
+    prevBusy.set(terminal, isBusyTitle(terminal.name));
+    log(`[track] name="${terminal.name}"`);
+    return false;
+  };
 
   const poll = () => {
     for (const terminal of vscode.window.terminals) {
-      // デバッグ時は全ターミナルのタイトル変化を記録
-      if (debugEnabled && prevNames.get(terminal) !== terminal.name) {
-        log(`[all] name="${terminal.name}"`);
-        prevNames.set(terminal, terminal.name);
-      }
-
-      if (!CLAUDE_MARKER_RE.test(terminal.name)) continue;
-
       const name = terminal.name;
-      const isWaiting = name.includes(WAITING_MARKER);
-      const prev = prevStates.get(terminal);
-      const id = idFor(terminal);
 
+      // デバッグ時は全ターミナルのタイトル変化を記録
       if (debugEnabled && prevNames.get(terminal) !== name) {
-        log(`[matched] name="${name}" isWaiting=${isWaiting} prev=${prev}`);
+        log(`[all] name="${name}"`);
         prevNames.set(terminal, name);
       }
 
-      if (prev === false && isWaiting) {
+      // 初めて見つけたターミナルは記録だけして次回から状態変化を見る
+      if (!track(terminal)) continue;
+
+      const busy = isBusyTitle(name);
+      const change = transition(prevBusy.get(terminal), busy);
+      prevBusy.set(terminal, busy);
+
+      if (change === 'finished') {
+        // ウィンドウを見ているなら通知は不要
+        if (vscode.window.state.focused) {
+          log(`-> skip notify (window focused) name="${name}"`);
+          continue;
+        }
+        const id = idFor(terminal);
         log(`-> notify id=${id}`);
         notify(id, project());
+        notifiedIds.set(terminal, id);
         activeIds.add(id);
       }
-      if (prev === true && !isWaiting) {
+      if (change === 'resumed') {
+        const id = notifiedIds.get(terminal);
+        if (!id) continue;
         log(`-> dismiss id=${id}`);
         dismiss(id);
+        notifiedIds.delete(terminal);
         activeIds.delete(id);
       }
-
-      prevStates.set(terminal, isWaiting);
     }
   };
 
-  for (const terminal of vscode.window.terminals) {
-    if (CLAUDE_MARKER_RE.test(terminal.name)) {
-      prevStates.set(terminal, terminal.name.includes(WAITING_MARKER));
-    }
-  }
+  for (const terminal of vscode.window.terminals) track(terminal);
 
-  context.subscriptions.push(
-    vscode.window.onDidOpenTerminal(terminal => {
-      if (CLAUDE_MARKER_RE.test(terminal.name)) {
-        prevStates.set(terminal, terminal.name.includes(WAITING_MARKER));
-      }
-    })
-  );
+  context.subscriptions.push(vscode.window.onDidOpenTerminal(track));
 
   context.subscriptions.push(
     vscode.window.onDidChangeWindowState(state => {
@@ -108,7 +110,7 @@ function notify(id: string, project: string) {
   const params = new URLSearchParams({
     action: 'show',
     id,
-    title: 'Claude Code 入力待ち',
+    title: vscode.l10n.t(MESSAGES.waitingTitle),
     msg: project,
   });
   exec(`open -g "hammerspoon://claude-notify?${params}"`);
