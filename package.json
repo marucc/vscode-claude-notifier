@@ -3,6 +3,7 @@
   "displayName": "Claude Code Notifier",
   "description": "Claude Code が入力待ちになったら macOS 通知を送る",
   "version": "0.1.0",
+  "publisher": "marucc",
   "engines": {
     "vscode": "^1.87.0"
   },
